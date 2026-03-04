@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Valnet Tech Performance Dashboard</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070f;--bg2:rgba(3,7,18,0.4);--bg3:rgba(3,7,18,0.5);
+  --card:rgba(17,24,39,0.6);--card2:rgba(17,24,39,0.8);--card3:rgba(17,24,39,0.3);
+  --header-bg:rgba(7,7,15,0.9);
+  --border:#1f2937;--border2:#374151;
+  --text:#e2e8f0;--text2:#9ca3af;--text3:#6b7280;--text4:#4b5563;
+  --input-bg:#1f2937;--row-alt:rgba(3,7,18,0.3);
+  --accent:#60a5fa;--accent-hi:#93c5fd;--sort-text:#ffffff;--revenue-text:#4ade80;
+}
+body.light{
+  --bg:#f8fafc;--bg2:rgba(241,245,249,0.95);--bg3:rgba(241,245,249,0.9);
+  --card:#ffffff;--card2:#ffffff;--card3:#f1f5f9;
+  --header-bg:rgba(248,250,252,0.97);
+  --border:#e2e8f0;--border2:#94a3b8;
+  --text:#1e293b;--text2:#475569;--text3:#64748b;--text4:#6b7280;
+  --input-bg:#f1f5f9;--row-alt:rgba(241,245,249,0.8);
+  --accent:#2563eb;--accent-hi:#1d4ed8;--sort-text:#0f172a;--revenue-text:#15803d;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+.drow:hover td{background:rgba(255,255,255,0.04)!important;cursor:pointer}
+body.light .drow:hover td{background:rgba(0,0,0,0.03)!important}
+.drow.active td{background:rgba(59,130,246,0.15)!important}
+body.light .drow.active td{background:rgba(59,130,246,0.1)!important}
+.sth{cursor:pointer;user-select:none}
+.sth:hover{color:#e2e8f0!important}
+body.light .sth:hover{color:#1e293b!important}
+.arow:hover td{background:rgba(255,255,255,0.03)}
+body.light .arow:hover td{background:rgba(0,0,0,0.03)}
+@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fi{animation:fi .2s ease}
+button,input,select{font-family:inherit}
+table{border-collapse:collapse;width:100%}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+// Show JS errors visibly
+window.onerror=function(msg,src,line){
+  var d=document.createElement('div');
+  d.style.cssText='position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#7f1d1d;color:#fca5a5;padding:10px 18px;border-radius:8px;font-size:12px;z-index:9999;max-width:80vw;word-break:break-all;font-family:monospace';
+  d.textContent='JS Error: '+msg+(line?' (line '+line+')':'');
+  document.body.appendChild(d);
+  setTimeout(function(){d.remove()},20000);
+};
+
+const h=React.createElement;
+const {useState,useRef}=React;
+
+const CLIENT_ID='1026548183269-jebk6532n8767q35il7ruft9fb4rmar6.apps.googleusercontent.com';
+const DRIVE_FILE_ID='1nw7DjO9JAJGNPaV-WrIL7dLp3vZgl9Dp';
+
+function LoaderApp(){
+  const [dataSource,setDataSource]=useState('bq');
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState('');
+  const [dataFile,setDataFile]=useState(null);
+  const [ctxFile,setCtxFile]=useState(null);
+  const [jsFile,setJsFile]=useState(null);
+  const [dataHover,setDataHover]=useState(false);
+  const [ctxHover,setCtxHover]=useState(false);
+  const [jsHover,setJsHover]=useState(false);
+  const dataRef=useRef(null);
+  const ctxRef=useRef(null);
+  const jsRef=useRef(null);
+
+  function readFile(file,setter){
+    const r=new FileReader();
+    r.onload=function(e){setter({name:file.name,text:e.target.result});};
+    r.readAsText(file);
+  }
+
+  function injectScript(scriptText){
+    var s=document.createElement('script');
+    s.textContent=scriptText;
+    document.head.appendChild(s);
+  }
+
+  function handleOAuth(){
+    if(!window.google){setError('Google Sign-In is still loading. Please wait a moment and try again.');return;}
+    var tc=google.accounts.oauth2.initTokenClient({
+      client_id:CLIENT_ID,
+      scope:'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly',
+      callback:function(resp){
+        if(resp.error){setError('Sign-in failed: '+resp.error);return;}
+        var accessToken=resp.access_token;
+        setLoading(true);setError('');
+        fetch('https://www.googleapis.com/drive/v3/files/'+DRIVE_FILE_ID+'?alt=media',{
+          headers:{Authorization:'Bearer '+accessToken}
+        }).then(function(r){
+          if(!r.ok)throw new Error('Failed to load dashboard (HTTP '+r.status+'). Make sure the file is shared with your Google account.');
+          return r.text();
+        }).then(function(scriptText){
+          injectScript(scriptText);
+          if(typeof window.__dashInit!=='function')throw new Error('Dashboard script did not initialize correctly.');
+          window.__dashInit(accessToken,dataSource);
+        }).catch(function(e){
+          setLoading(false);
+          setError(e.message);
+        });
+      },
+    });
+    tc.requestAccessToken();
+  }
+
+  function handleLocalLoad(){
+    if(!dataFile||!jsFile)return;
+    try{
+      injectScript(jsFile.text);
+      if(typeof window.__dashLocalInit!=='function'){setError('Dashboard JS file did not initialize correctly.');return;}
+      window.__dashLocalInit(dataFile.text,ctxFile?ctxFile.text:null);
+    }catch(e){setError('Error loading: '+e.message);}
+  }
+
+  function Zone(props){
+    var label=props.label,sub=props.sub,file=props.file,setFile=props.setFile,
+        hover=props.hover,setHover=props.setHover,inputRef=props.inputRef,accept=props.accept;
+    var active=!!file;
+    return h('div',{
+      style:{flex:1,border:'2px dashed '+(hover?'#60a5fa':active?'#22c55e':'#374151'),
+        borderRadius:12,padding:'18px 12px',textAlign:'center',cursor:'pointer',
+        background:hover?'rgba(96,165,250,0.08)':active?'rgba(34,197,94,0.06)':'rgba(17,24,39,0.5)',
+        transition:'all .15s'},
+      onClick:function(){inputRef.current.click();},
+      onDragOver:function(e){e.preventDefault();setHover(true);},
+      onDragLeave:function(){setHover(false);},
+      onDrop:function(e){e.preventDefault();setHover(false);var f=e.dataTransfer.files[0];if(f)readFile(f,setFile);},
+    },
+      h('input',{type:'file',accept:accept||'.csv',ref:inputRef,style:{display:'none'},
+        onChange:function(e){var f=e.target.files[0];if(f)readFile(f,setFile);e.target.value='';}}),
+      h('div',{style:{fontSize:28,marginBottom:6}},active?'\u2705':'\uD83D\uDCC4'),
+      h('div',{style:{fontSize:12,fontWeight:600,color:active?'#22c55e':'#9ca3af',marginBottom:3}},
+        active?file.name:label),
+      h('div',{style:{fontSize:11,color:'#6b7280'}},active?'Click to replace':sub)
+    );
+  }
+
+  if(loading)return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',background:'var(--bg)',flexDirection:'column',gap:16}},
+    h('div',{style:{width:32,height:32,border:'3px solid var(--border2)',borderTopColor:'#3b82f6',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}),
+    h('div',{style:{color:'var(--text3)',fontSize:14}},'Loading dashboard\u2026')
+  );
+
+  return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',padding:16,background:'var(--bg)'}},
+    h('div',{style:{width:'100%',maxWidth:560,textAlign:'center'}},
+      h('div',{style:{fontSize:52,marginBottom:12}},'\uD83D\uDCCA'),
+      h('h1',{style:{fontSize:22,fontWeight:700,color:'var(--text)',marginBottom:8}},'Valnet Tech Dashboard'),
+      h('p',{style:{color:'var(--text3)',fontSize:14,marginBottom:36}},'HTG \u00b7 XDA \u00b7 MUO \u00b7 Android Police \u00b7 Pocket-Lint'),
+      h('button',{onClick:handleOAuth,style:{
+          background:'#fff',color:'#3c4043',border:'1px solid #dadce0',borderRadius:10,
+          padding:'12px 28px',fontSize:15,fontWeight:600,cursor:'pointer',
+          display:'inline-flex',alignItems:'center',gap:10,
+          boxShadow:'0 1px 3px rgba(0,0,0,0.18)',transition:'box-shadow .15s'},
+        onMouseOver:function(e){e.currentTarget.style.boxShadow='0 3px 10px rgba(0,0,0,0.28)';},
+        onMouseOut:function(e){e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.18)';}},
+        '\uD83D\uDD10 Sign in with Google'),
+      h('div',{style:{display:'flex',alignItems:'center',gap:12,margin:'24px 0 20px'}},
+        h('div',{style:{flex:1,height:1,background:'#374151'}}),
+        h('span',{style:{fontSize:12,color:'#6b7280',whiteSpace:'nowrap'}},'or use local files'),
+        h('div',{style:{flex:1,height:1,background:'#374151'}})
+      ),
+      h('div',{style:{display:'flex',gap:12,marginBottom:16}},
+        h(Zone,{label:'Data CSV',sub:'Drop or click to browse',file:dataFile,setFile:setDataFile,hover:dataHover,setHover:setDataHover,inputRef:dataRef,accept:'.csv'}),
+        h(Zone,{label:'Context CSV',sub:'Optional \u00b7 drop or browse',file:ctxFile,setFile:setCtxFile,hover:ctxHover,setHover:setCtxHover,inputRef:ctxRef,accept:'.csv'}),
+        h(Zone,{label:'Dashboard JS',sub:'dashboard.js file',file:jsFile,setFile:setJsFile,hover:jsHover,setHover:setJsHover,inputRef:jsRef,accept:'.js'})
+      ),
+      (dataFile&&jsFile)&&h('button',{onClick:handleLocalLoad,style:{
+          background:'#1d4ed8',color:'#fff',border:'none',borderRadius:10,
+          padding:'11px 32px',fontSize:14,fontWeight:600,cursor:'pointer',
+          boxShadow:'0 2px 8px rgba(29,78,216,0.4)',transition:'opacity .15s'},
+        onMouseOver:function(e){e.currentTarget.style.opacity='0.85';},
+        onMouseOut:function(e){e.currentTarget.style.opacity='1';}},
+        'Load from files'),
+      h('div',{style:{marginTop:24,paddingTop:16,borderTop:'1px solid #1f2937'}},
+        h('label',{style:{display:'inline-flex',alignItems:'center',gap:8,cursor:'pointer'}},
+          h('input',{type:'checkbox',checked:dataSource==='legacy',
+            onChange:function(e){setDataSource(e.target.checked?'legacy':'bq');},
+            style:{cursor:'pointer',accentColor:'#a855f7',width:14,height:14}}),
+          h('span',{style:{fontSize:12,color:'#6b7280'}},'Use legacy data source')
+        )
+      ),
+      error&&h('p',{style:{color:'#ef4444',fontSize:13,marginTop:20,padding:'10px 16px',
+        background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:8}},error)
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(LoaderApp,null));
+</script>
+</body>
+</html>
