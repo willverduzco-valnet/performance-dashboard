@@ -191,7 +191,7 @@ function LoaderApp(){
           h('input',{type:'checkbox',checked:dataSource==='legacy',
             onChange:function(e){setDataSource(e.target.checked?'legacy':'bq');},
             style:{cursor:'pointer',accentColor:'#a855f7',width:14,height:14}}),
-          h('span',{style:{fontSize:12,color:'#6b7280'}},'Use legacy data source')
+          h('span',{style:{fontSize:12,color:'#6b7280'}},'Use legacy data source (contact Will Verduzco prior to use)')
         )
       ),
       error&&h('p',{style:{color:'#ef4444',fontSize:13,marginTop:20,padding:'10px 16px',
