@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Valnet Tech — Content Opportunities</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070f;--bg2:rgba(3,7,18,0.4);
+  --card:rgba(17,24,39,0.6);--card2:rgba(17,24,39,0.8);
+  --border:#1f2937;--border2:#374151;
+  --text:#e2e8f0;--text2:#9ca3af;--text3:#6b7280;--text4:#4b5563;
+  --input-bg:#1f2937;--row-alt:rgba(3,7,18,0.3);
+  --accent:#60a5fa;--accent-hi:#93c5fd;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+button,input,select{font-family:inherit}
+table{border-collapse:collapse;width:100%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const h=React.createElement;
+const {useState,useEffect,useMemo,useCallback}=React;
+
+const CLIENT_ID='1026548183269-jebk6532n8767q35il7ruft9fb4rmar6.apps.googleusercontent.com';
+const BRANDS=['HTG','XDA','MUO','AP','PL'];
+const BFULL={HTG:'How-To Geek',XDA:'XDA',MUO:'MakeUseOf',AP:'Android Police',PL:'Pocket-Lint'};
+const BCOLOR={HTG:'#3B82F6',XDA:'#F97316',MUO:'#22C55E',AP:'#EF4444',PL:'#A855F7'};
+
+const TYPE_ICON={competitor:'\uD83D\uDCF0',reddit:'\uD83D\uDCAC',trends:'\uD83D\uDCC8'};
+const CONF_COLOR={high:'#22c55e',medium:'#eab308',low:'#ef4444'};
+const CONF_BG={high:'rgba(34,197,94,0.15)',medium:'rgba(234,179,8,0.12)',low:'rgba(239,68,68,0.12)'};
+
+function fmt(v,t){
+  if(v==null||isNaN(v))return'\u2014';
+  if(t==='$')return'$'+v.toFixed(2);
+  if(t==='%')return v.toFixed(1)+'%';
+  return Math.round(v).toLocaleString();
+}
+
+function valuesToObjects(values){
+  if(!values||values.length<2)return[];
+  const hdrs=values[0];
+  return values.slice(1).map(row=>{
+    const obj={};
+    hdrs.forEach((hd,i)=>{obj[hd]=row[i]!=null?row[i]:'';});
+    return obj;
+  });
+}
+
+// ---- Components ----
+
+function Header({brand,onBrand,lastUpdated,onRefresh,loading}){
+  const btn=(b,active)=>h('button',{key:b,onClick:()=>onBrand(b),style:{
+    padding:'6px 14px',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:active?700:400,
+    background:active?(b==='ALL'?'rgba(100,116,139,0.3)':'rgba('+hexToRgb(BCOLOR[b])+',0.2)'):'none',
+    border:'1px solid '+(active?(b==='ALL'?'#64748b':BCOLOR[b]):'rgba(255,255,255,0.12)'),
+    color:active?'#fff':'#94a3b8',transition:'all .15s'
+  }},b==='ALL'?'All Brands':(BFULL[b]||b));
+
+  return h('div',{style:{position:'sticky',top:0,zIndex:10,background:'var(--bg)',borderBottom:'1px solid var(--border)'}},
+    h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'10px 16px'}},
+      h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+        h('span',{style:{fontWeight:700,fontSize:15,color:'var(--text)'}},'Valnet Content Opportunities'),
+        lastUpdated&&h('span',{style:{fontSize:11,color:'var(--text4)'}},'Last scan: '+lastUpdated)
+      ),
+      h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+        h('a',{href:'https://willverduzco-valnet.github.io/performance-dashboard/',style:{fontSize:12,color:'var(--accent)',textDecoration:'none'}},'Performance Dashboard'),
+        h('button',{onClick:onRefresh,disabled:loading,style:{background:'none',border:'1px solid var(--border2)',color:'var(--text3)',padding:'5px 12px',borderRadius:8,cursor:'pointer',fontSize:12}},
+          loading?'Loading...':'Refresh')
+      )
+    ),
+    h('div',{style:{display:'flex',gap:6,padding:'6px 16px 10px',overflowX:'auto'}},
+      btn('ALL',brand==='ALL'),
+      ...BRANDS.map(b=>btn(b,brand===b))
+    )
+  );
+}
+
+function OpportunityCard({opp,i}){
+  const [expanded,setExpanded]=useState(false);
+  const conf=opp['Confidence']||'medium';
+  const score=parseFloat(opp['Rule Score'])||0;
+  const typeIcon=TYPE_ICON[opp['Signal Type']]||'\uD83D\uDCCB';
+  const brandColor=BCOLOR[opp['Brand']]||'#6b7280';
+
+  return h('div',{style:{
+    background:'var(--card)',border:'1px solid var(--border)',borderRadius:12,
+    padding:'14px 16px',animation:'fi .2s ease',cursor:'pointer',
+    borderLeft:'4px solid '+(CONF_COLOR[conf]||'#6b7280'),
+  },onClick:()=>setExpanded(e=>!e)},
+    // Top row: title + badges
+    h('div',{style:{display:'flex',alignItems:'flex-start',gap:10,marginBottom:8}},
+      h('span',{style:{fontSize:18,flexShrink:0}},typeIcon),
+      h('div',{style:{flex:1,minWidth:0}},
+        h('div',{style:{fontSize:14,fontWeight:600,color:'var(--text)',lineHeight:1.4}},
+          opp['Suggested Title']||opp['Signal Title']||'(untitled)'),
+        opp['Suggested Title']&&opp['Signal Title']&&opp['Suggested Title']!==opp['Signal Title']&&
+          h('div',{style:{fontSize:11,color:'var(--text4)',marginTop:2}},'Signal: '+opp['Signal Title'])
+      ),
+      h('div',{style:{display:'flex',gap:6,flexShrink:0,alignItems:'center'}},
+        h('span',{style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:'rgba('+hexToRgb(brandColor)+',0.2)',color:brandColor,fontWeight:700}},opp['Brand']),
+        h('span',{style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:CONF_BG[conf],color:CONF_COLOR[conf],fontWeight:600}},conf),
+        h('span',{style:{fontSize:11,padding:'2px 8px',borderRadius:999,background:'rgba(96,165,250,0.15)',color:'var(--accent)',fontWeight:600}},score+'/100')
+      )
+    ),
+    // Meta row
+    h('div',{style:{display:'flex',gap:12,fontSize:11,color:'var(--text3)',flexWrap:'wrap'}},
+      h('span',null,'Source: '+opp['Signal Source']),
+      opp['Category']&&h('span',null,'Category: '+opp['Category']),
+      opp['Content Type']&&h('span',null,'Format: '+opp['Content Type']),
+      opp['Matched Segments']&&h('span',null,'Segments: '+opp['Matched Segments']),
+      opp['Signal Time']&&h('span',null,timeAgo(opp['Signal Time']))
+    ),
+    // Expanded details
+    expanded&&h('div',{style:{marginTop:10,paddingTop:10,borderTop:'1px solid var(--border)',fontSize:12,lineHeight:1.7}},
+      opp['AI Reasoning']&&h('div',{style:{marginBottom:6}},
+        h('span',{style:{color:'var(--accent)',fontWeight:600}},'AI Analysis: '),
+        h('span',{style:{color:'var(--text2)'}},opp['AI Reasoning'])
+      ),
+      opp['Discover Angle']&&h('div',{style:{marginBottom:6}},
+        h('span',{style:{color:'#22c55e',fontWeight:600}},'Discover Angle: '),
+        h('span',{style:{color:'var(--text2)'}},opp['Discover Angle'])
+      ),
+      opp['Rule Reasoning']&&h('div',{style:{marginBottom:6}},
+        h('span',{style:{color:'var(--text3)',fontWeight:600}},'Scoring: '),
+        h('span',{style:{color:'var(--text4)'}},opp['Rule Reasoning'])
+      ),
+      opp['Signal URL']&&h('a',{href:opp['Signal URL'],target:'_blank',rel:'noopener',
+        style:{color:'var(--accent)',fontSize:11}},'View original signal \u2192')
+    )
+  );
+}
+
+function SignalFeed({signals,brand}){
+  const filtered=useMemo(()=>{
+    let s=signals;
+    if(brand!=='ALL')s=s.filter(r=>r['Brand']===brand);
+    return s.sort((a,b)=>new Date(b['Timestamp'])-new Date(a['Timestamp'])).slice(0,100);
+  },[signals,brand]);
+
+  if(!filtered.length)return h('div',{style:{padding:24,textAlign:'center',color:'var(--text4)',fontSize:13}},'No signals yet');
+
+  return h('div',{style:{display:'flex',flexDirection:'column',gap:4}},
+    ...filtered.map((s,i)=>h('div',{key:i,style:{display:'flex',gap:8,padding:'6px 0',borderBottom:'1px solid rgba(55,65,81,0.3)',fontSize:12,alignItems:'center'}},
+      h('span',{style:{fontSize:14,flexShrink:0}},TYPE_ICON[s['Type']]||'\uD83D\uDCCB'),
+      h('span',{style:{color:BCOLOR[s['Brand']]||'var(--text3)',fontWeight:600,fontSize:10,flexShrink:0,width:30}},s['Brand']),
+      h('span',{style:{color:'var(--text4)',fontSize:10,flexShrink:0,width:80}},s['Source']),
+      h('a',{href:s['URL'],target:'_blank',rel:'noopener',style:{color:'var(--text)',textDecoration:'none',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'},
+        onMouseOver:e=>e.target.style.color='var(--accent)',onMouseOut:e=>e.target.style.color='var(--text)'},s['Title']),
+      h('span',{style:{color:'var(--text4)',fontSize:10,flexShrink:0}},timeAgo(s['Timestamp']))
+    ))
+  );
+}
+
+function Stats({opportunities,brand}){
+  const filtered=useMemo(()=>brand==='ALL'?opportunities:opportunities.filter(o=>o['Brand']===brand),[opportunities,brand]);
+  const total=filtered.length;
+  const high=filtered.filter(o=>o['Confidence']==='high').length;
+  const byType={competitor:0,reddit:0,trends:0};
+  filtered.forEach(o=>{const t=o['Signal Type'];if(byType[t]!=null)byType[t]++;});
+  const avgScore=total>0?filtered.reduce((s,o)=>s+(parseFloat(o['Rule Score'])||0),0)/total:0;
+
+  const card=(label,value,color)=>h('div',{style:{background:'var(--card2)',border:'1px solid var(--border)',borderRadius:10,padding:'10px 14px',minWidth:100}},
+    h('div',{style:{fontSize:10,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:2}},label),
+    h('div',{style:{fontSize:18,fontWeight:700,color:color||'var(--text)'}},value)
+  );
+
+  return h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+    card('Opportunities',total),
+    card('High Confidence',high,'#22c55e'),
+    card('Avg Score',avgScore.toFixed(0),'var(--accent)'),
+    card('Competitor',byType.competitor),
+    card('Reddit',byType.reddit),
+    card('Trends',byType.trends)
+  );
+}
+
+function App(){
+  const [token,setToken]=useState(null);
+  const [opportunities,setOpportunities]=useState([]);
+  const [signals,setSignals]=useState([]);
+  const [brand,setBrand]=useState('ALL');
+  const [loading,setLoading]=useState(false);
+  const [tab,setTab]=useState('opportunities');
+  const [sortKey,setSortKey]=useState('score');
+  const [lastUpdated,setLastUpdated]=useState('');
+  const [sheetId,setSheetId]=useState(localStorage.getItem('opp_sheet_id')||'');
+  const [showSetup,setShowSetup]=useState(false);
+
+  async function loadData(accessToken,sid){
+    const id=sid||sheetId;
+    if(!id){setShowSetup(true);return;}
+    setLoading(true);
+    try{
+      const base='https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/';
+      const hd={Authorization:'Bearer '+accessToken};
+      const [oppR,sigR]=await Promise.all([
+        fetch(base+encodeURIComponent('opportunities'),{headers:hd}).then(r=>r.json()).catch(()=>({values:[]})),
+        fetch(base+encodeURIComponent('signals'),{headers:hd}).then(r=>r.json()).catch(()=>({values:[]})),
+      ]);
+      if(oppR.values)setOpportunities(valuesToObjects(oppR.values));
+      if(sigR.values)setSignals(valuesToObjects(sigR.values));
+      if(oppR.values&&oppR.values.length>1){
+        const firstRow=oppR.values[1];
+        if(firstRow&&firstRow[0])setLastUpdated(new Date(firstRow[0]).toLocaleString());
+      }
+    }catch(e){
+      console.error('Load error:',e);
+    }finally{setLoading(false);}
+  }
+
+  function handleAuth(){
+    const client=google.accounts.oauth2.initTokenClient({
+      client_id:CLIENT_ID,
+      scope:'https://www.googleapis.com/auth/spreadsheets.readonly',
+      callback:(resp)=>{
+        if(resp.access_token){
+          setToken(resp.access_token);
+          loadData(resp.access_token);
+        }
+      }
+    });
+    client.requestAccessToken();
+  }
+
+  function handleSetup(){
+    const id=document.getElementById('setupSheetId').value.trim();
+    if(!id)return;
+    setSheetId(id);
+    localStorage.setItem('opp_sheet_id',id);
+    setShowSetup(false);
+    if(token)loadData(token,id);
+  }
+
+  const filtered=useMemo(()=>{
+    let opps=brand==='ALL'?opportunities:opportunities.filter(o=>o['Brand']===brand);
+    if(sortKey==='score')opps=[...opps].sort((a,b)=>(parseFloat(b['Rule Score'])||0)-(parseFloat(a['Rule Score'])||0));
+    else if(sortKey==='time')opps=[...opps].sort((a,b)=>new Date(b['Signal Time'])-new Date(a['Signal Time']));
+    else if(sortKey==='confidence'){
+      const order={high:0,medium:1,low:2};
+      opps=[...opps].sort((a,b)=>(order[a['Confidence']]||9)-(order[b['Confidence']]||9));
+    }
+    return opps;
+  },[opportunities,brand,sortKey]);
+
+  // Login screen
+  if(!token){
+    return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',flexDirection:'column',gap:16}},
+      h('div',{style:{fontSize:20,fontWeight:700,color:'var(--text)'}},'Valnet Content Opportunities'),
+      h('div',{style:{fontSize:13,color:'var(--text3)',marginBottom:8}},'Sign in with your Valnet Google account to view opportunities'),
+      h('button',{onClick:handleAuth,style:{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:10,padding:'12px 28px',fontSize:14,fontWeight:600,cursor:'pointer'}},'Sign in with Google')
+    );
+  }
+
+  // Setup sheet ID
+  if(showSetup||!sheetId){
+    return h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',minHeight:'100vh',flexDirection:'column',gap:12}},
+      h('div',{style:{fontSize:16,fontWeight:700,color:'var(--text)'}},'Setup: Enter Output Sheet ID'),
+      h('div',{style:{fontSize:12,color:'var(--text3)',maxWidth:400,textAlign:'center',marginBottom:8}},
+        'Enter the Google Sheet ID where the Opportunity Agent writes its results. This is the OUTPUT_SHEET_ID from your Apps Script configuration.'),
+      h('input',{id:'setupSheetId',type:'text',defaultValue:sheetId,placeholder:'Sheet ID (from URL)',
+        style:{width:400,padding:'8px 12px',background:'var(--input-bg)',border:'1px solid var(--border2)',color:'var(--text)',borderRadius:8,fontSize:13}}),
+      h('button',{onClick:handleSetup,style:{background:'#1d4ed8',color:'#fff',border:'none',borderRadius:8,padding:'8px 24px',fontSize:13,fontWeight:600,cursor:'pointer'}},'Save & Load')
+    );
+  }
+
+  const tabBtn=(id,label)=>h('button',{onClick:()=>setTab(id),style:{
+    background:tab===id?'rgba(96,165,250,0.15)':'none',color:tab===id?'var(--accent)':'var(--text3)',
+    border:'1px solid '+(tab===id?'var(--accent)':'var(--border2)'),borderRadius:8,padding:'5px 14px',fontSize:12,fontWeight:tab===id?600:400,cursor:'pointer'
+  }},label);
+
+  const sortBtn=(id,label)=>h('button',{onClick:()=>setSortKey(id),style:{
+    background:sortKey===id?'#1d4ed8':'none',color:sortKey===id?'#fff':'var(--text3)',
+    border:'none',borderRadius:6,padding:'3px 10px',fontSize:11,fontWeight:600,cursor:'pointer'
+  }},label);
+
+  return h('div',{style:{minHeight:'100vh',display:'flex',flexDirection:'column'}},
+    h(Header,{brand,onBrand:setBrand,lastUpdated,onRefresh:()=>loadData(token),loading}),
+    h('div',{style:{padding:'12px 16px'}},
+      h(Stats,{opportunities,brand})
+    ),
+    h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'0 16px 12px'}},
+      tabBtn('opportunities','Opportunities'),
+      tabBtn('signals','Signal Feed'),
+      h('div',{style:{marginLeft:'auto',display:'flex',gap:4,alignItems:'center'}},
+        tab==='opportunities'&&h('span',{style:{fontSize:10,color:'var(--text4)',marginRight:4}},'SORT'),
+        tab==='opportunities'&&sortBtn('score','Score'),
+        tab==='opportunities'&&sortBtn('confidence','Confidence'),
+        tab==='opportunities'&&sortBtn('time','Newest'),
+        h('button',{onClick:()=>setShowSetup(true),style:{background:'none',border:'1px solid var(--border2)',color:'var(--text4)',padding:'3px 10px',borderRadius:6,fontSize:11,cursor:'pointer',marginLeft:8}},'Settings')
+      )
+    ),
+    h('div',{style:{padding:'0 16px 24px',flex:1}},
+      loading&&h('div',{style:{textAlign:'center',padding:40}},h('div',{style:{width:28,height:28,border:'3px solid var(--border2)',borderTopColor:'#3b82f6',borderRadius:'50%',animation:'spin .8s linear infinite',margin:'0 auto 8px'}}),h('div',{style:{color:'var(--text3)',fontSize:13}},'Loading...')),
+      !loading&&tab==='opportunities'&&h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+        filtered.length===0&&h('div',{style:{padding:40,textAlign:'center',color:'var(--text4)',fontSize:13}},'No opportunities found. Run the Opportunity Agent from Apps Script to generate results.'),
+        ...filtered.map((opp,i)=>h(OpportunityCard,{key:i,opp,i}))
+      ),
+      !loading&&tab==='signals'&&h('div',{style:{background:'var(--card)',border:'1px solid var(--border)',borderRadius:12,padding:'12px 14px',maxHeight:'70vh',overflowY:'auto'}},
+        h(SignalFeed,{signals,brand})
+      )
+    )
+  );
+}
+
+// Utilities
+function hexToRgb(hex){
+  const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return r+','+g+','+b;
+}
+function timeAgo(ts){
+  if(!ts)return'';
+  const d=new Date(ts),now=new Date(),diff=(now-d)/1000;
+  if(diff<60)return'just now';
+  if(diff<3600)return Math.floor(diff/60)+'m ago';
+  if(diff<86400)return Math.floor(diff/3600)+'h ago';
+  return Math.floor(diff/86400)+'d ago';
+}
+function valuesToObjects(values){
+  if(!values||values.length<2)return[];
+  const hdrs=values[0];
+  return values.slice(1).map(row=>{
+    const obj={};
+    hdrs.forEach((hd,i)=>{obj[hd]=row[i]!=null?row[i]:'';});
+    return obj;
+  });
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
