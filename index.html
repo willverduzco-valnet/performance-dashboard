@@ -94,13 +94,15 @@ function LoaderApp(){
 
   function bootWithToken(accessToken){
     setLoading(true);setError('');
-    // Save user email for silent auto-login next time
-    fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+accessToken}})
-      .then(function(r){return r.json();}).then(function(u){if(u.email)localStorage.setItem('dash_login_hint',u.email);}).catch(function(){});
+    // Cache token with expiry (55 min — tokens last 60 min, 5 min buffer)
+    localStorage.setItem('dash_token',JSON.stringify({token:accessToken,expires:Date.now()+55*60*1000}));
     fetch('https://www.googleapis.com/drive/v3/files/'+DRIVE_FILE_ID+'?alt=media',{
       headers:{Authorization:'Bearer '+accessToken}
     }).then(function(r){
-      if(!r.ok)throw new Error('Failed to load dashboard (HTTP '+r.status+'). Make sure the file is shared with your Google account.');
+      if(!r.ok){
+        localStorage.removeItem('dash_token');
+        throw new Error('Failed to load dashboard (HTTP '+r.status+'). Make sure the file is shared with your Google account.');
+      }
       return r.text();
     }).then(function(scriptText){
       injectScript(scriptText);
@@ -112,29 +114,17 @@ function LoaderApp(){
     });
   }
 
-  // Try silent auto-login on mount (only if we have a saved login hint)
+  // Auto-login from cached token on mount
   var autoTriedRef=useRef(false);
   useEffect(function(){
     if(autoTriedRef.current)return;
     autoTriedRef.current=true;
-    var hint=localStorage.getItem('dash_login_hint');
-    if(!hint)return;
-    function tryAuto(){
-      if(!window.google)return;
-      var tc=google.accounts.oauth2.initTokenClient({
-        client_id:CLIENT_ID,
-        scope:'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly',
-        prompt:'',
-        login_hint:hint,
-        callback:function(resp){
-          if(resp.error||!resp.access_token)return;
-          bootWithToken(resp.access_token);
-        },
-      });
-      tc.requestAccessToken();
-    }
-    if(window.google)tryAuto();
-    else{var iv=setInterval(function(){if(window.google){clearInterval(iv);tryAuto();}},200);setTimeout(function(){clearInterval(iv);},5000);}
+    try{
+      var cached=JSON.parse(localStorage.getItem('dash_token')||'null');
+      if(cached&&cached.token&&cached.expires>Date.now()){
+        bootWithToken(cached.token);
+      }
+    }catch(e){}
   },[]);
 
   function handleOAuth(){
