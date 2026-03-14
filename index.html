@@ -94,6 +94,9 @@ function LoaderApp(){
 
   function bootWithToken(accessToken){
     setLoading(true);setError('');
+    // Save user email for silent auto-login next time
+    fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{Authorization:'Bearer '+accessToken}})
+      .then(function(r){return r.json();}).then(function(u){if(u.email)localStorage.setItem('dash_login_hint',u.email);}).catch(function(){});
     fetch('https://www.googleapis.com/drive/v3/files/'+DRIVE_FILE_ID+'?alt=media',{
       headers:{Authorization:'Bearer '+accessToken}
     }).then(function(r){
@@ -109,17 +112,20 @@ function LoaderApp(){
     });
   }
 
-  // Try silent auto-login on mount
+  // Try silent auto-login on mount (only if we have a saved login hint)
   var autoTriedRef=useRef(false);
   useEffect(function(){
     if(autoTriedRef.current)return;
     autoTriedRef.current=true;
+    var hint=localStorage.getItem('dash_login_hint');
+    if(!hint)return;
     function tryAuto(){
       if(!window.google)return;
       var tc=google.accounts.oauth2.initTokenClient({
         client_id:CLIENT_ID,
         scope:'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/drive.readonly',
         prompt:'',
+        login_hint:hint,
         callback:function(resp){
           if(resp.error||!resp.access_token)return;
           bootWithToken(resp.access_token);
