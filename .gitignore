@@ -1,2 +1,7 @@
-dashboard.js
-dashboard-testing.js
+# Whitelist: only the public loader pages (and the libs they require) belong on GitHub.
+# Everything else in this directory stays local.
+/*
+!/.gitignore
+!/index.html
+!/testing.html
+!/lib
